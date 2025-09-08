@@ -60,43 +60,33 @@ def main():
 
     if main_type == '--선택--': return
 
-    filtered_df = df[df['구분'] == main_type].copy()
-
     if main_type == '대학원생':
-        display_results(filtered_df)
+        display_results(df[df['구분'] == '대학원생'])
         return
 
-    # --- ✨ 대학생 로직 수정 ---
     if main_type == '대학생':
         status_options = ['--선택--', '신입생(1학년)', '재학생(2학년 이상)', '직업전문학교 학생']
         user_status = st.selectbox("학년 정보를 선택해주세요.", status_options)
 
         if user_status == '--선택--': return
 
-        filtered_df = filtered_df[filtered_df['학년 정보'].str.contains(user_status, na=False)]
-        
-        unique_conditions = set()
-        for _, row in filtered_df.iterrows():
-            conditions = row['필수 조건'].split(', ') + row['경제상황 요건'].split(', ')
-            unique_conditions.update(c.strip() for c in conditions if c != '해당 없음')
-        
-        user_conditions = []
-        if unique_conditions:
-            user_conditions = st.multiselect("해당하는 모든 조건을 선택해주세요.", sorted(list(unique_conditions)))
+        if user_status == '직업전문학교 학생':
+            result_df = df[df['장학금명'] == '서울희망 직업전문학교 장학금']
+            display_results(result_df)
+            return
 
-        final_recommendations = []
-        for _, row in filtered_df.iterrows():
-            all_required = row['필수 조건'] + ", " + row['경제상황 요건']
-            is_eligible = False
-            if not user_conditions and '해당 없음' in all_required:
-                is_eligible = True
-            elif any(cond in all_required for cond in user_conditions):
-                is_eligible = True
-            if is_eligible:
-                final_recommendations.append(row)
-        display_results(pd.DataFrame(final_recommendations))
+        if user_status == '신입생(1학년)':
+            scholarship_names = ['서울희망 대학진로 장학금', '청춘Start 장학금', '독립유공자 후손 장학금']
+            result_df = df[df['장학금명'].isin(scholarship_names)]
+            display_results(result_df)
+            return
 
-    # --- ✨ 고등학생 로직 수정 ---
+        if user_status == '재학생(2학년 이상)':
+            excluded_scholarships = ['청춘Start 장학금', '서울희망 직업전문학교 장학금']
+            result_df = df[(df['구분'] == '대학생') & (~df['장학금명'].isin(excluded_scholarships))]
+            display_results(result_df)
+            return
+
     elif main_type == '고등학생':
         status_options = ['--선택--', '고등학교 재학생', '비인가 대안교육기관 재학 청소년']
         user_status = st.selectbox("조금 더 상세한 신분을 선택해주세요.", status_options)
@@ -107,7 +97,7 @@ def main():
             display_results(df[df['학년 정보'] == user_status])
             return
 
-        filtered_df = filtered_df[filtered_df['학년 정보'] == user_status]
+        filtered_df = df[df['학년 정보'] == user_status]
         
         user_major = st.selectbox("전공 계열을 선택해주세요.", ['--선택--', '예체능', '기타'])
         if user_major == '--선택--': return
@@ -120,39 +110,28 @@ def main():
         if user_eco_choice == '--선택--': return
 
         user_eco_conditions = []
-        if user_eco_choice == eco_options[1]: user_eco_conditions = ['기초생활수급자', '차상위계층', '법정차상위계층']
-        elif user_eco_choice == eco_options[2]: user_eco_conditions = ['북한이탈주민']
-        elif user_eco_choice == eco_options[3]: user_eco_conditions = ['경제사각지대']
-
-        # 학교장 추천 및 특기자 질문 추가
-        special_conditions = st.multiselect("해당하는 조건을 모두 선택해주세요.", ['예체능 특기자', '학교장 추천 받은 학생'])
+        if user_eco_choice == eco_options[1]:
+            user_eco_conditions = ['기초생활수급자', '차상위계층', '법정차상위계층']
+        elif user_eco_choice == eco_options[2]:
+            user_eco_conditions = ['북한이탈주민']
+        elif user_eco_choice == eco_options[3]:
+            user_eco_conditions = ['경제사각지대', '학교장 추천 받은 학생']
 
         final_recommendations = []
         for _, row in filtered_df.iterrows():
             if user_major == '예체능' and row['전공 계열'] != '예체능': continue
             if user_major == '기타' and row['전공 계열'] == '예체능': continue
             
-            all_required = row['필수 조건'] + ", " + row['경제상황 요건']
-
-            # 필수 조건 체크
-            has_special_req = False
-            for cond in special_conditions:
-                if cond in all_required:
-                    has_special_req = True
-            if not special_conditions and '해당 없음' not in row['필수 조건']: # 사용자가 선택 안했는데 필수조건이 있으면 탈락
-                continue
-            if special_conditions and not has_special_req: # 사용자가 선택했는데 필수조건이 안맞으면 탈락
-                continue
-
-
-            # 경제상황 요건 체크
+            # ✨ 수정된 부분: 별도의 '필수 조건' 질문 없이, 전공과 경제상황만으로 필터링합니다.
+            # 예체능 장학금의 '예체능 특기자' 조건은 '예체능' 전공 선택으로 갈음합니다.
+            
             req_eco = row['경제상황 요건']
-            if user_eco_choice != '해당 없음' and not any(cond in req_eco for cond in user_eco_conditions):
-                continue
-            if user_eco_choice == '해당 없음' and req_eco != '해당 없음':
-                 continue
-
-            final_recommendations.append(row)
+            
+            if user_eco_choice == '해당 없음':
+                if '해당 없음' in row['필수 조건'] and '해당 없음' in req_eco:
+                    final_recommendations.append(row)
+            elif any(cond in req_eco for cond in user_eco_conditions):
+                 final_recommendations.append(row)
         
         display_results(pd.DataFrame(final_recommendations))
 
